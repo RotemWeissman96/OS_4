@@ -1,3 +1,10 @@
+#include "PhysicalMemory.h"
+
+void clearPage(uint64_t phisical_add){
+    for (int i = 0; i < PAGE_SIZE; i++){
+        PMwrite(phisical_add + i, 0);
+    }
+}
 
 
 
@@ -8,7 +15,7 @@
  * Initialize the virtual memory.
  */
 void VMinitialize(){
-    return;
+    clearPage(0);
 }
 
 /* Reads a word from the given virtual address
