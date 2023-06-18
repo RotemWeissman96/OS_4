@@ -65,6 +65,9 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
                          ,uint64_t &maxFrameNumberInUse, uint64_t *parentsList,
                          uint64_t &maxCycleValue, uint64_t &maxCyclePageNumber, uint64_t &maxCycleParent,
                          uint64_t &emptyFrame, uint64_t &emptyFrameParent){
+    if(maxFrameNumberInUse < currentFrame){
+        maxFrameNumberInUse = currentFrame;
+    }
     if (currentDepth == TABLES_DEPTH - 1){ // we reached a leaf
         //TODO: check if it is max cycle
     }
@@ -78,9 +81,7 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
                 word_t val = 0;
                 PMread(address, &val);
                 if (val){
-                    if(maxFrameNumberInUse < val){
-                        maxFrameNumberInUse = val;
-                    }
+
                     addToParentList(reinterpret_cast<uint64_t &>(val), parentsList);
 
                     dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), currentFrame
