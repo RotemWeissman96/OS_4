@@ -68,20 +68,36 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
 uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     uint64_t offset = virtualAddress << calculateNumShifts(0);
     uint64_t currentTableOffset = virtualAddress >> calculateNumShifts(0);
-    word_t currentTablePageNumber = 0;
+    word_t currentTableFrameNumber = 0;
     uint64_t inputPageNumber = calculatePageNumber(virtualAddress);
-    // TODO: init parent list
+    uint64_t parentsList[TABLES_DEPTH*2];
+    parentsList[0] = 0;
     for (int i = 1; i < TABLES_DEPTH - 1; i++){
-        PMread(currentTablePageNumber * PAGE_SIZE + currentTableOffset, &currentTablePageNumber);
+        // calculating the next table address (if its last one, then the next table is the resulting page)
+        PMread(currentTableFrameNumber * PAGE_SIZE + currentTableOffset, &currentTableFrameNumber);
         currentTableOffset = (virtualAddress << calculateNumShifts(i)) % PAGE_SIZE;
-        //TODO: init all arguments for dfs
-        //TODO: add this frame to parent list
-        if(currentTablePageNumber == 0){
-            //TODO: handle page fault
+
+        parentsList[i] = currentTableFrameNumber;
+
+        if(currentTableFrameNumber == 0){ // there is a page falt
+            // init all arguments for dfs
+            uint64_t lastFrameChecked = 0;
+            uint64_t lastFrameCheckedParent = -1;
+            uint64_t maxFrameNumberInUse;
+            uint64_t maxCycleValue;
+            uint64_t maxCyclePageNumber;
+            uint64_t maxCycleParent;
+            uint64_t emptyFrame;
+            uint64_t emptyFrameParent;
+            //call dfs to gather information on the tree
+            dfsFindFrameToEvict(0, lastFrameChecked, lastFrameCheckedParent
+                    ,maxFrameNumberInUse, parentsList,
+                    maxCycleValue, maxCyclePageNumber, maxCycleParent,
+                    emptyFrame, emptyFrameParent);
+            // TODO: check options to choose and update parent
         }
-        // TODO: check options to choose and update parent
     }
-    return currentTablePageNumber * PAGE_SIZE + offset;
+    return currentTableFrameNumber * PAGE_SIZE + offset;
 }
 
 
