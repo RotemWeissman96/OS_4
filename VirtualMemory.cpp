@@ -8,16 +8,26 @@ void clearPage(uint64_t page_number){
 
 //call with 0 to calculate root shifts needed
 int calculate_num_shifts(int depth){
-    return OFFSET_WIDTH + (TABLES_DEPTH - 1 - depth) * OFFSET_WIDTH;
-} // TODO: not sure that is true for all cases of number of bits representing the table
+    return (TABLES_DEPTH - depth) * OFFSET_WIDTH; //table depth - offset - current depth
+}
+
+uint64_t calculate_page_number(uint64_t virtual_address){
+    return virtual_address << OFFSET_WIDTH;
+}
 
 uint64_t map_virtual_to_physical(uint64_t virtualAddress) {
-    uint64_t offset = virtualAddress & ((1LL << (OFFSET_WIDTH + 1)) - 1);
-    uint64_t current_p = virtualAddress >> calculate_num_shifts(0);
-    for (int i = 1; i < TABLES_DEPTH; i++){
+    uint64_t offset = virtualAddress << calculate_num_shifts(0);
+    uint64_t current_table_offset = virtualAddress >> calculate_num_shifts(0);
+    word_t current_table_page_number = 0;
+    for (int i = 1; i < TABLES_DEPTH - 1; i++){
+        PMread(current_table_page_number*PAGE_SIZE + current_table_offset, &current_table_page_number);
+        current_table_offset = (virtualAddress << calculate_num_shifts(i)) % PAGE_SIZE;
 
+        if(current_table_page_number == 0){
+            //TODO: handle page fault
+        }
     }
-    return 0;
+    return current_table_page_number*PAGE_SIZE + offset;
 }
 
 
