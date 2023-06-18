@@ -1,20 +1,10 @@
 #include "PhysicalMemory.h"
 
-void addToParentList(word_t val);
 #define PAGE_FAULT 0
 void clearPage(uint64_t page_number){
     for (int i = 0; i < PAGE_SIZE; i++){
         PMwrite(page_number*PAGE_SIZE + i, 0);
     }
-}
-
-//call with 0 to calculate root shifts needed
-int calculateNumShifts(int depth){
-    return (TABLES_DEPTH - depth) * OFFSET_WIDTH; //table depth - offset - current depth
-}
-
-uint64_t calculatePageNumber(uint64_t virtualAddress){
-    return virtualAddress << OFFSET_WIDTH;
 }
 
 bool isFrameEmpty(uint64_t &currentFrame){
@@ -30,126 +20,100 @@ bool isFrameEmpty(uint64_t &currentFrame){
 
 }
 
-void addToParentList(uint64_t val, uint64_t *parentsList) {
-    for (int i = TABLES_DEPTH; i < 2*TABLES_DEPTH; i++){
-        if (parentsList[i] == -1){
-            parentsList[i] = val;
-        }
-    }
-}
 
-void initParentList(uint64_t *parentsList){
-    for (int i = 0; i < 2*TABLES_DEPTH; i++){
-        parentsList[i] = -1;
-    }
-}
-
-bool inParentList(uint64_t val, const uint64_t *parentsList){
-    for (int i = 0; i < 2*TABLES_DEPTH; i++){
-        if (parentsList[i] == val){
-            return true;
-        }
-    }
-    return false;
-}
-
-void removeFromParentList(uint64_t val, uint64_t *parentsList){
-    for (int i = TABLES_DEPTH; i < 2*TABLES_DEPTH; i++){
-        if (parentsList[i] == val){
-            parentsList[i] = -1;
-        }
-    }
-}
-
-void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t &currentParent
-                         ,uint64_t &maxFrameNumberInUse, uint64_t *parentsList,
-                         uint64_t &maxCycleValue, uint64_t &maxCyclePageNumber, uint64_t &maxCycleParent,
-                         uint64_t &emptyFrame, uint64_t &emptyFrameParent){
-    if(maxFrameNumberInUse < currentFrame){
-        maxFrameNumberInUse = currentFrame;
+void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrameNumber, uint64_t &currentParent,
+                         uint64_t &maxFrameNumberInUse,
+                         uint64_t &maxCycleValue, uint64_t &maxCycleFrameNumber, uint64_t &maxCycleParent, uint64_t swappedInPageNumber,
+                         uint64_t &emptyFrame, uint64_t &emptyFrameParent, uint64_t forbiddenFrame){
+    if(maxFrameNumberInUse < currentFrameNumber){
+        maxFrameNumberInUse = currentFrameNumber;
     }
     if (currentDepth == TABLES_DEPTH - 1){ // we reached a leaf
         //TODO: check if it is max cycle
     }
     else{
-        if (isFrameEmpty(currentFrame)){
-            emptyFrame = currentFrame;
+        if (currentFrameNumber != forbiddenFrame && isFrameEmpty(currentFrameNumber)){
+            emptyFrame = currentFrameNumber;
             emptyFrameParent = currentParent;
         }
         else{
-            for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++){
+            for (uint64_t address = currentFrameNumber*PAGE_SIZE; address < (currentFrameNumber+1)*PAGE_SIZE; address++){
                 word_t val = 0;
                 PMread(address, &val);
                 if (val){
-
-                    addToParentList(reinterpret_cast<uint64_t &>(val), parentsList);
-
-                    dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), address
-                            , maxFrameNumberInUse, parentsList, maxCycleValue, maxCyclePageNumber, maxCycleParent,
-                                        emptyFrame, emptyFrameParent);
-
-                    removeFromParentList(reinterpret_cast<uint64_t &>(val), parentsList);
+                    dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), address,
+                                        maxFrameNumberInUse,
+                                        maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
+                                        emptyFrame, emptyFrameParent, forbiddenFrame);
                 }
             }
         }
     }
-
-
 }
 
+uint64_t handlePageFault(uint64_t swappedInPageNumber, uint64_t faultAddress, uint64_t forbiddenFrame){
+    // init all arguments for dfs
+    uint64_t lastFrameChecked = 0;
+    uint64_t lastFrameCheckedParent = 0;
+    uint64_t maxFrameNumberInUse = 0;
+    uint64_t maxCycleValue = 0;
+    uint64_t maxCycleFrameNumber = 0;
+    uint64_t maxCycleParent = 0;
+    uint64_t emptyFrame = 0;
+    uint64_t emptyFrameParent = 0;
+    //call dfs to gather information on the tree
+    dfsFindFrameToEvict(0, lastFrameChecked, lastFrameCheckedParent,
+                        maxFrameNumberInUse,
+                        maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
+                        emptyFrame, emptyFrameParent, forbiddenFrame);
+    // TODO: check options to choose and update parent
+    uint64_t newFrame = -1;
+    if (emptyFrame!=-1){
+        newFrame = emptyFrame;
+        PMwrite(emptyFrameParent,PAGE_FAULT);
+    }
+    else if(maxFrameNumberInUse+1<NUM_FRAMES){
+        newFrame = maxFrameNumberInUse+1;
+    }
+    else {
+        //TODO: case 3
+    }
+
+    PMwrite(faultAddress,newFrame);
+    return newFrame;
+}
+
+/**
+ * f[DEPTH] = offset
+ * the rest are the inner tabels off sets
+ * @param virtualAddress
+ * @param f
+ */
+void parseVirtualAddress(uint64_t virtualAddress, uint64_t *f){
+    virtualAddress = virtualAddress >> OFFSET_WIDTH;
+    for (int i = 0; i < TABLES_DEPTH; i++){
+        f[TABLES_DEPTH - 1 - i] = virtualAddress % PAGE_SIZE;
+        virtualAddress = virtualAddress >> OFFSET_WIDTH;
+    }
+}
 
 uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
-    uint64_t offset = virtualAddress << calculateNumShifts(0);
-    uint64_t currentTableOffset = virtualAddress >> calculateNumShifts(0);
-    word_t currentTableFrameNumber = 0;
-    uint64_t inputPageNumber = calculatePageNumber(virtualAddress);
-    uint64_t parentsList[TABLES_DEPTH*2];
-    initParentList(parentsList);
-    parentsList[0] = 0;
-    for (int i = 1; i < TABLES_DEPTH - 1; i++){
-        // calculating the next table address (if its last one, then the next table is the resulting page)
-
-        uint64_t currAddress =  currentTableFrameNumber * PAGE_SIZE + currentTableOffset
-        PMread(currAddress, &currentTableFrameNumber);
-        currentTableOffset = (virtualAddress << calculateNumShifts(i)) % PAGE_SIZE;
-
-        parentsList[i] = currentTableFrameNumber;
-
-        if(currentTableFrameNumber == PAGE_FAULT){ // there is a page fault
-            // init all arguments for dfs
-            uint64_t lastFrameChecked = 0;
-            uint64_t lastFrameCheckedParent = -1;
-            uint64_t maxFrameNumberInUse = 0;
-            uint64_t maxCycleValue = -1;
-            uint64_t maxCyclePageNumber = -1;
-            uint64_t maxCycleParent = -1;
-            uint64_t emptyFrame = -1;
-            uint64_t emptyFrameParent = -1;
-            //call dfs to gather information on the tree
-            dfsFindFrameToEvict(0, lastFrameChecked, lastFrameCheckedParent
-                    ,maxFrameNumberInUse, parentsList,
-                    maxCycleValue, maxCyclePageNumber, maxCycleParent,
-                    emptyFrame, emptyFrameParent);
-            // TODO: check options to choose and update parent
-
-            uint64_t newFrame = -1;
-
-            if (emptyFrame!=-1){
-                newFrame = emptyFrame;
-                PMwrite(emptyFrameParent,PAGE_FAULT)
-            }
-            else if(maxFrameNumberInUse+1<NUM_FRAMES){
-
-                newFrame = maxFrameNumberInUse+1;
-            }
-
-            PMwrite(currAddress,newFrame)
-            currentTableFrameNumber=newFrame
-
-
+    uint64_t offset = virtualAddress % PAGE_SIZE;
+    uint64_t swappedInPageNumber = virtualAddress >> OFFSET_WIDTH;
+    uint64_t f[TABLES_DEPTH];
+    parseVirtualAddress(virtualAddress, f);
+    word_t currentFrameNumber = 0;
+    uint64_t currAddress = 0;
+    uint64_t forbiddenFrame = 0;
+    for (int i = 0; i < TABLES_DEPTH; i++){
+        currAddress =  (currentFrameNumber * PAGE_SIZE) + f[i];
+        PMread(currAddress, &currentFrameNumber);
+        if(currentFrameNumber == PAGE_FAULT){ // there is a page fault
+            currentFrameNumber = handlePageFault(swappedInPageNumber, currAddress, forbiddenFrame);
+            forbiddenFrame = currentFrameNumber;
         }
     }
-    return currentTableFrameNumber * PAGE_SIZE + offset;
+    return currentFrameNumber * PAGE_SIZE + offset;
 }
 
 
