@@ -14,6 +14,19 @@ int calculateNumShifts(int depth){
 uint64_t calculatePageNumber(uint64_t virtualAddress){
     return virtualAddress << OFFSET_WIDTH;
 }
+boolean isFrameEmpty(uint64_t &currentFrame){
+    word_t val = 0;
+
+    for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++) {
+
+        PMread(address, &val);
+        if (val!=0){
+            return false;
+        }
+    }
+    return true;
+
+}
 
 void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t &currentParent
                          ,uint64_t &maxFrameNumberInUse, uint64_t *parentsList,
@@ -31,8 +44,15 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
             for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++){
                 word_t val = 0;
                 PMread(address, &val);
-                //TODO: update max frame in use, add to parent list
+
+
                 if (val){
+                    if(*maxFrameNumberInUse<val){
+                        *maxFrameNumberInUse = val;
+                    }
+                    //TODO: add to parent list
+
+
                     dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), currentFrame
                             , maxFrameNumberInUse, parentsList, maxCycleValue, maxCyclePageNumber, maxCycleParent,
                                         emptyFrame, emptyFrameParent);
