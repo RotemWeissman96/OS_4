@@ -21,16 +21,16 @@ int main(int argc, char **argv) {
 //    printf("%d", value);
 
     VMinitialize();
-    for (uint64_t i = 0; i < (2); ++i) {
-        printf("writing to %llu %d\n", (long long int) i, i);
-        VMwrite(i * PAGE_SIZE, i);
+    for (uint64_t i = 0; i < (20); ++i) {
+        printf("writing to %llu %d\n", (long long int) 5 * i * PAGE_SIZE, i);
+        VMwrite(5 * i * PAGE_SIZE, i);
     }
 
-    for (uint64_t i = 0; i < (2); ++i) {
+    for (uint64_t i = 0; i < (20); ++i) {
         word_t value;
-        VMread( i*PAGE_SIZE, &value);
-        printf("reading from %llu %d\n", (long long int) i, value);
-//        assert(uint64_t(value) == i);
+        VMread(5 * i * PAGE_SIZE, &value);
+        printf("reading from %llu %d\n", (long long int) 5 * i * PAGE_SIZE, value);
+        assert(uint64_t(value) == i);
     }
     printf("success\n");
 

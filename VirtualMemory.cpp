@@ -48,7 +48,7 @@ void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t 
     if(maxFrameNumberInUse < currentFrameNumber){
         maxFrameNumberInUse = currentFrameNumber;
     }
-    if (currentDepth == TABLES_DEPTH - 1){ // we reached a leaf
+    if (currentDepth == TABLES_DEPTH){ // we reached a leaf
         pageCount ++;
         updateMaxCycle(maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber, pageCount,
                        currentParent, currentFrameNumber, maxCyclePageNumber);
@@ -60,7 +60,7 @@ void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t 
             pageCount = pageCount + (1 << (TABLES_DEPTH - currentDepth));
         }
         else{
-            for (uint64_t address = currentFrameNumber*PAGE_SIZE; address < (currentFrameNumber+1)*PAGE_SIZE; address++){
+            for (uint64_t address = currentFrameNumber*PAGE_SIZE; address < static_cast<uint64_t>(currentFrameNumber+1)*PAGE_SIZE; address++){
                 word_t val = 0;
                 PMread(address, &val);
                 if (val){
@@ -74,7 +74,7 @@ void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t 
     }
 }
 
-uint64_t handlePageFault(uint64_t swappedInPageNumber, uint64_t faultAddress, word_t forbiddenFrame){
+uint64_t handlePageFault(int depth, uint64_t swappedInPageNumber, uint64_t faultAddress, word_t forbiddenFrame){
     // init all arguments for dfs
     word_t lastFrameChecked = 0;
     uint64_t lastFrameCheckedParent = 0;
@@ -102,11 +102,13 @@ uint64_t handlePageFault(uint64_t swappedInPageNumber, uint64_t faultAddress, wo
         clearFrame(newFrame);
     }
     else { // case 3
-        PMevict(newFrame, maxCyclePageNumber);
         newFrame = maxCycleFrameNumber;
+        PMevict(newFrame, maxCyclePageNumber);
         PMwrite(maxCycleParent, PAGE_FAULT);
     }
-    PMrestore(newFrame, swappedInPageNumber);
+    if (depth == TABLES_DEPTH - 1){
+        PMrestore(newFrame, swappedInPageNumber);
+    }
     PMwrite(faultAddress,newFrame);
     return newFrame;
 }
@@ -137,10 +139,11 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
         currAddress =  (currentFrameNumber * PAGE_SIZE) + f[i];
         PMread(currAddress, &currentFrameNumber);
         if(currentFrameNumber == PAGE_FAULT){ // there is a page fault
-            currentFrameNumber = handlePageFault(swappedInPageNumber, currAddress, forbiddenFrame);
+            currentFrameNumber = handlePageFault(i, swappedInPageNumber, currAddress, forbiddenFrame);
             forbiddenFrame = currentFrameNumber;
         }
     }
+
     return currentFrameNumber * PAGE_SIZE + offset;
 }
 
