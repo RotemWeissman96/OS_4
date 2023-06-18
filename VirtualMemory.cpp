@@ -1,5 +1,7 @@
 #include "PhysicalMemory.h"
 
+void addToParentList(word_t val);
+
 void clearPage(uint64_t page_number){
     for (int i = 0; i < PAGE_SIZE; i++){
         PMwrite(page_number*PAGE_SIZE + i, 0);
@@ -28,6 +30,37 @@ bool isFrameEmpty(uint64_t &currentFrame){
 
 }
 
+void addToParentList(uint64_t val, uint64_t *parentsList) {
+    for (int i = TABLES_DEPTH; i < 2*TABLES_DEPTH; i++){
+        if (parentsList[i] == -1){
+            parentsList[i] = val;
+        }
+    }
+}
+
+void initParentList(uint64_t *parentsList){
+    for (int i = 0; i < 2*TABLES_DEPTH; i++){
+        parentsList[i] = -1;
+    }
+}
+
+bool inParentList(uint64_t val, const uint64_t *parentsList){
+    for (int i = 0; i < 2*TABLES_DEPTH; i++){
+        if (parentsList[i] == val){
+            return true;
+        }
+    }
+    return false;
+}
+
+void removeFromParentList(uint64_t val, uint64_t *parentsList){
+    for (int i = TABLES_DEPTH; i < 2*TABLES_DEPTH; i++){
+        if (parentsList[i] == val){
+            parentsList[i] = -1;
+        }
+    }
+}
+
 void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t &currentParent
                          ,uint64_t &maxFrameNumberInUse, uint64_t *parentsList,
                          uint64_t &maxCycleValue, uint64_t &maxCyclePageNumber, uint64_t &maxCycleParent,
@@ -48,20 +81,21 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
                     if(maxFrameNumberInUse < val){
                         maxFrameNumberInUse = val;
                     }
-                    //TODO: add to parent list
-
+                    addToParentList(reinterpret_cast<uint64_t &>(val), parentsList);
 
                     dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), currentFrame
                             , maxFrameNumberInUse, parentsList, maxCycleValue, maxCyclePageNumber, maxCycleParent,
                                         emptyFrame, emptyFrameParent);
+
+                    removeFromParentList(reinterpret_cast<uint64_t &>(val), parentsList);
                 }
             }
-            // TODO: remove from parent list
         }
     }
 
 
 }
+
 
 uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     uint64_t offset = virtualAddress << calculateNumShifts(0);
@@ -69,6 +103,7 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     word_t currentTableFrameNumber = 0;
     uint64_t inputPageNumber = calculatePageNumber(virtualAddress);
     uint64_t parentsList[TABLES_DEPTH*2];
+    initParentList(parentsList);
     parentsList[0] = 0;
     for (int i = 1; i < TABLES_DEPTH - 1; i++){
         // calculating the next table address (if its last one, then the next table is the resulting page)
