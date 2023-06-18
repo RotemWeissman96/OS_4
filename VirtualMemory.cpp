@@ -1,7 +1,7 @@
 #include "PhysicalMemory.h"
 
 void addToParentList(word_t val);
-
+#define PAGE_FAULT 0
 void clearPage(uint64_t page_number){
     for (int i = 0; i < PAGE_SIZE; i++){
         PMwrite(page_number*PAGE_SIZE + i, 0);
@@ -84,7 +84,7 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
 
                     addToParentList(reinterpret_cast<uint64_t &>(val), parentsList);
 
-                    dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), currentFrame
+                    dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), address
                             , maxFrameNumberInUse, parentsList, maxCycleValue, maxCyclePageNumber, maxCycleParent,
                                         emptyFrame, emptyFrameParent);
 
@@ -108,12 +108,14 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     parentsList[0] = 0;
     for (int i = 1; i < TABLES_DEPTH - 1; i++){
         // calculating the next table address (if its last one, then the next table is the resulting page)
-        PMread(currentTableFrameNumber * PAGE_SIZE + currentTableOffset, &currentTableFrameNumber);
+
+        uint64_t currAddress =  currentTableFrameNumber * PAGE_SIZE + currentTableOffset
+        PMread(currAddress, &currentTableFrameNumber);
         currentTableOffset = (virtualAddress << calculateNumShifts(i)) % PAGE_SIZE;
 
         parentsList[i] = currentTableFrameNumber;
 
-        if(currentTableFrameNumber == 0){ // there is a page falt
+        if(currentTableFrameNumber == PAGE_FAULT){ // there is a page fault
             // init all arguments for dfs
             uint64_t lastFrameChecked = 0;
             uint64_t lastFrameCheckedParent = -1;
@@ -129,6 +131,22 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
                     maxCycleValue, maxCyclePageNumber, maxCycleParent,
                     emptyFrame, emptyFrameParent);
             // TODO: check options to choose and update parent
+
+            uint64_t newFrame = -1;
+
+            if (emptyFrame!=-1){
+                newFrame = emptyFrame;
+                PMwrite(emptyFrameParent,PAGE_FAULT)
+            }
+            else if(maxFrameNumberInUse+1<NUM_FRAMES){
+
+                newFrame = maxFrameNumberInUse+1;
+            }
+
+            PMwrite(currAddress,newFrame)
+            currentTableFrameNumber=newFrame
+
+
         }
     }
     return currentTableFrameNumber * PAGE_SIZE + offset;
