@@ -103,7 +103,7 @@ uint64_t handlePageFault(int depth, uint64_t swappedInPageNumber, uint64_t fault
     }
     else { // case 3
         newFrame = maxCycleFrameNumber;
-        PMevict(newFrame, maxCyclePageNumber);
+        PMevict(newFrame, maxCyclePageNumber);  // TODO: calling here twice
         PMwrite(maxCycleParent, PAGE_FAULT);
     }
     if (depth == TABLES_DEPTH - 1){

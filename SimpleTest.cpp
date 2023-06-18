@@ -21,12 +21,12 @@ int main(int argc, char **argv) {
 //    printf("%d", value);
 
     VMinitialize();
-    for (uint64_t i = 0; i < (20); ++i) {
+    for (uint64_t i = 0; i < (NUM_PAGES); ++i) {
         printf("writing to %llu %d\n", (long long int) 5 * i * PAGE_SIZE, i);
         VMwrite(5 * i * PAGE_SIZE, i);
     }
 
-    for (uint64_t i = 0; i < (20); ++i) {
+    for (uint64_t i = 0; i < (NUM_PAGES); ++i) {
         word_t value;
         VMread(5 * i * PAGE_SIZE, &value);
         printf("reading from %llu %d\n", (long long int) 5 * i * PAGE_SIZE, value);
