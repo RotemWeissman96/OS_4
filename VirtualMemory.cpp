@@ -15,18 +15,51 @@ uint64_t calculatePageNumber(uint64_t virtualAddress){
     return virtualAddress << OFFSET_WIDTH;
 }
 
-uint64_t mapVirtualVoPhysical(uint64_t virtualAddress) {
+void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t &currentParent
+                         ,uint64_t &maxFrameNumberInUse, uint64_t *parentsList,
+                         uint64_t &maxCycleValue, uint64_t &maxCyclePageNumber, uint64_t &maxCycleParent,
+                         uint64_t &emptyFrame, uint64_t &emptyFrameParent){
+    if (currentDepth == TABLES_DEPTH - 1){ // we reached a leaf
+        //TODO: check if it is max cycle
+    }
+    else{
+        if (isFrameEmpty(currentFrame)){
+            emptyFrame = currentFrame;
+            emptyFrameParent = currentParent;
+        }
+        else{
+            for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++){
+                word_t val = 0;
+                PMread(address, &val);
+                //TODO: update max frame in use, add to parent list
+                if (val){
+                    dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), currentFrame
+                            , maxFrameNumberInUse, parentsList, maxCycleValue, maxCyclePageNumber, maxCycleParent,
+                                        emptyFrame, emptyFrameParent);
+                }
+            }
+            // TODO: remove from parent list
+        }
+    }
+
+
+}
+
+uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     uint64_t offset = virtualAddress << calculateNumShifts(0);
     uint64_t currentTableOffset = virtualAddress >> calculateNumShifts(0);
     word_t currentTablePageNumber = 0;
     uint64_t inputPageNumber = calculatePageNumber(virtualAddress);
+    // TODO: init parent list
     for (int i = 1; i < TABLES_DEPTH - 1; i++){
         PMread(currentTablePageNumber * PAGE_SIZE + currentTableOffset, &currentTablePageNumber);
         currentTableOffset = (virtualAddress << calculateNumShifts(i)) % PAGE_SIZE;
-
+        //TODO: init all arguments for dfs
+        //TODO: add this frame to parent list
         if(currentTablePageNumber == 0){
             //TODO: handle page fault
         }
+        // TODO: check options to choose and update parent
     }
     return currentTablePageNumber * PAGE_SIZE + offset;
 }
@@ -49,7 +82,7 @@ void VMinitialize(){
  * address for any reason)
  */
 int VMread(uint64_t virtualAddress, word_t* value){
-    uint64_t physicalAddress = mapVirtualVoPhysical(virtualAddress);
+    uint64_t physicalAddress = mapVirtualToPhysical(virtualAddress);
     if (physicalAddress != 0){
         VMread(physicalAddress, value);
         return 1;
@@ -64,7 +97,7 @@ int VMread(uint64_t virtualAddress, word_t* value){
  * address for any reason)
  */
 int VMwrite(uint64_t virtualAddress, word_t value){
-    uint64_t physicalAddress = mapVirtualVoPhysical(virtualAddress);
+    uint64_t physicalAddress = mapVirtualToPhysical(virtualAddress);
     if (physicalAddress != 0){
         VMwrite(physicalAddress, value);
         return 1;
