@@ -20,21 +20,42 @@ bool isFrameEmpty(uint64_t &currentFrame){
 
 }
 
+void updateMaxCycle(uint64_t &maxCycleValue, uint64_t &maxCycleFrameNumber, uint64_t &maxCycleParent,
+                    uint64_t swappedInPageNumber, uint64_t &pageCount, uint64_t &currentParent, uint64_t &currentFrame){
+    // calculate new cycle value:
+    uint64_t firstPart =  swappedInPageNumber - pageCount;
+    if (firstPart < 0){
+        firstPart = -firstPart;
+    }
+    uint64_t currentCyclicValue = firstPart;
+    if (currentCyclicValue > NUM_PAGES - firstPart){
+        currentCyclicValue = NUM_PAGES - firstPart;
+    }
+    // decide if to update the max cycle
+    if (currentCyclicValue > maxCycleValue){
+        maxCycleValue = currentCyclicValue;
+        maxCycleParent = currentParent;
+        maxCycleFrameNumber = currentFrame;
+    }
+}
 
 void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrameNumber, uint64_t &currentParent,
-                         uint64_t &maxFrameNumberInUse,
+                         uint64_t &maxFrameNumberInUse, uint64_t &pageCount,
                          uint64_t &maxCycleValue, uint64_t &maxCycleFrameNumber, uint64_t &maxCycleParent, uint64_t swappedInPageNumber,
                          uint64_t &emptyFrame, uint64_t &emptyFrameParent, uint64_t forbiddenFrame){
     if(maxFrameNumberInUse < currentFrameNumber){
         maxFrameNumberInUse = currentFrameNumber;
     }
     if (currentDepth == TABLES_DEPTH - 1){ // we reached a leaf
-        //TODO: check if it is max cycle
+        pageCount ++;
+        updateMaxCycle(maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber, pageCount,
+                       currentParent, currentFrameNumber);
     }
     else{
         if (currentFrameNumber != forbiddenFrame && isFrameEmpty(currentFrameNumber)){
             emptyFrame = currentFrameNumber;
             emptyFrameParent = currentParent;
+            pageCount = pageCount + (1 << (TABLES_DEPTH - currentDepth));
         }
         else{
             for (uint64_t address = currentFrameNumber*PAGE_SIZE; address < (currentFrameNumber+1)*PAGE_SIZE; address++){
@@ -42,7 +63,7 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrameNumber, ui
                 PMread(address, &val);
                 if (val){
                     dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), address,
-                                        maxFrameNumberInUse,
+                                        maxFrameNumberInUse, pageCount,
                                         maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
                                         emptyFrame, emptyFrameParent, forbiddenFrame);
                 }
@@ -61,24 +82,24 @@ uint64_t handlePageFault(uint64_t swappedInPageNumber, uint64_t faultAddress, ui
     uint64_t maxCycleParent = 0;
     uint64_t emptyFrame = 0;
     uint64_t emptyFrameParent = 0;
+    uint64_t pageCount = 0;
     //call dfs to gather information on the tree
     dfsFindFrameToEvict(0, lastFrameChecked, lastFrameCheckedParent,
-                        maxFrameNumberInUse,
+                        maxFrameNumberInUse, pageCount,
                         maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
                         emptyFrame, emptyFrameParent, forbiddenFrame);
-    // TODO: check options to choose and update parent
-    uint64_t newFrame = -1;
-    if (emptyFrame!=-1){
+    uint64_t newFrame = 0;
+    if (emptyFrame != 0){ // case 1
         newFrame = emptyFrame;
         PMwrite(emptyFrameParent,PAGE_FAULT);
     }
-    else if(maxFrameNumberInUse+1<NUM_FRAMES){
-        newFrame = maxFrameNumberInUse+1;
+    else if(maxFrameNumberInUse+1<NUM_FRAMES){ // case 2
+        newFrame = maxFrameNumberInUse + 1;
     }
-    else {
-        //TODO: case 3
+    else { // case 3
+        newFrame = maxCycleFrameNumber;
+        PMwrite(maxCycleParent, PAGE_FAULT);
     }
-
     PMwrite(faultAddress,newFrame);
     return newFrame;
 }
