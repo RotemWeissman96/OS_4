@@ -1,13 +1,13 @@
 #include "PhysicalMemory.h"
 
 #define PAGE_FAULT 0
-void clearPage(uint64_t page_number){
+void clearFrame(word_t frameNumber){
     for (int i = 0; i < PAGE_SIZE; i++){
-        PMwrite(page_number*PAGE_SIZE + i, 0);
+        PMwrite(frameNumber * PAGE_SIZE + i, 0);
     }
 }
 
-bool isFrameEmpty(uint64_t &currentFrame){
+bool isFrameEmpty(word_t &currentFrame){
     word_t val = 0;
 
     for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++) {
@@ -20,8 +20,9 @@ bool isFrameEmpty(uint64_t &currentFrame){
 
 }
 
-void updateMaxCycle(uint64_t &maxCycleValue, uint64_t &maxCycleFrameNumber, uint64_t &maxCycleParent,
-                    uint64_t swappedInPageNumber, uint64_t &pageCount, uint64_t &currentParent, uint64_t &currentFrame){
+void updateMaxCycle(uint64_t &maxCycleValue, word_t &maxCycleFrameNumber, uint64_t &maxCycleParent,
+                    uint64_t swappedInPageNumber, uint64_t &pageCount, uint64_t &currentParent,
+                    word_t &currentFrame, uint64_t &maxCyclePageNumber){
     // calculate new cycle value:
     uint64_t firstPart =  swappedInPageNumber - pageCount;
     if (firstPart < 0){
@@ -36,20 +37,21 @@ void updateMaxCycle(uint64_t &maxCycleValue, uint64_t &maxCycleFrameNumber, uint
         maxCycleValue = currentCyclicValue;
         maxCycleParent = currentParent;
         maxCycleFrameNumber = currentFrame;
+        maxCyclePageNumber = pageCount;
     }
 }
 
-void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrameNumber, uint64_t &currentParent,
-                         uint64_t &maxFrameNumberInUse, uint64_t &pageCount,
-                         uint64_t &maxCycleValue, uint64_t &maxCycleFrameNumber, uint64_t &maxCycleParent, uint64_t swappedInPageNumber,
-                         uint64_t &emptyFrame, uint64_t &emptyFrameParent, uint64_t forbiddenFrame){
+void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t &currentParent,
+                         word_t &maxFrameNumberInUse, uint64_t &pageCount, uint64_t &maxCyclePageNumber,
+                         uint64_t &maxCycleValue, word_t &maxCycleFrameNumber, uint64_t &maxCycleParent, uint64_t swappedInPageNumber,
+                         word_t &emptyFrame, uint64_t &emptyFrameParent, word_t forbiddenFrame){
     if(maxFrameNumberInUse < currentFrameNumber){
         maxFrameNumberInUse = currentFrameNumber;
     }
     if (currentDepth == TABLES_DEPTH - 1){ // we reached a leaf
         pageCount ++;
         updateMaxCycle(maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber, pageCount,
-                       currentParent, currentFrameNumber);
+                       currentParent, currentFrameNumber, maxCyclePageNumber);
     }
     else{
         if (currentFrameNumber != forbiddenFrame && isFrameEmpty(currentFrameNumber)){
@@ -62,8 +64,8 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrameNumber, ui
                 word_t val = 0;
                 PMread(address, &val);
                 if (val){
-                    dfsFindFrameToEvict(currentDepth+1, reinterpret_cast<uint64_t &>(val), address,
-                                        maxFrameNumberInUse, pageCount,
+                    dfsFindFrameToEvict(currentDepth+1, val, address,
+                                        maxFrameNumberInUse, pageCount, maxCyclePageNumber,
                                         maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
                                         emptyFrame, emptyFrameParent, forbiddenFrame);
                 }
@@ -72,34 +74,39 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrameNumber, ui
     }
 }
 
-uint64_t handlePageFault(uint64_t swappedInPageNumber, uint64_t faultAddress, uint64_t forbiddenFrame){
+uint64_t handlePageFault(uint64_t swappedInPageNumber, uint64_t faultAddress, word_t forbiddenFrame){
     // init all arguments for dfs
-    uint64_t lastFrameChecked = 0;
+    word_t lastFrameChecked = 0;
     uint64_t lastFrameCheckedParent = 0;
-    uint64_t maxFrameNumberInUse = 0;
+    word_t maxFrameNumberInUse = 0;
     uint64_t maxCycleValue = 0;
-    uint64_t maxCycleFrameNumber = 0;
+    word_t maxCycleFrameNumber = 0;
     uint64_t maxCycleParent = 0;
-    uint64_t emptyFrame = 0;
+    word_t emptyFrame = 0;
     uint64_t emptyFrameParent = 0;
     uint64_t pageCount = 0;
+    uint64_t maxCyclePageNumber = 0;
     //call dfs to gather information on the tree
     dfsFindFrameToEvict(0, lastFrameChecked, lastFrameCheckedParent,
-                        maxFrameNumberInUse, pageCount,
+                        maxFrameNumberInUse, pageCount, maxCyclePageNumber,
                         maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
                         emptyFrame, emptyFrameParent, forbiddenFrame);
-    uint64_t newFrame = 0;
+    word_t newFrame = 0;
     if (emptyFrame != 0){ // case 1
         newFrame = emptyFrame;
         PMwrite(emptyFrameParent,PAGE_FAULT);
+        clearFrame(newFrame);
     }
     else if(maxFrameNumberInUse+1<NUM_FRAMES){ // case 2
         newFrame = maxFrameNumberInUse + 1;
+        clearFrame(newFrame);
     }
     else { // case 3
+        PMevict(newFrame, maxCyclePageNumber);
         newFrame = maxCycleFrameNumber;
         PMwrite(maxCycleParent, PAGE_FAULT);
     }
+    PMrestore(newFrame, swappedInPageNumber);
     PMwrite(faultAddress,newFrame);
     return newFrame;
 }
@@ -125,7 +132,7 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     parseVirtualAddress(virtualAddress, f);
     word_t currentFrameNumber = 0;
     uint64_t currAddress = 0;
-    uint64_t forbiddenFrame = 0;
+    word_t forbiddenFrame = 0;
     for (int i = 0; i < TABLES_DEPTH; i++){
         currAddress =  (currentFrameNumber * PAGE_SIZE) + f[i];
         PMread(currAddress, &currentFrameNumber);
@@ -144,7 +151,7 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
  * Initialize the virtual memory.
  */
 void VMinitialize(){
-    clearPage(0);
+    clearFrame(0);
 }
 
 /* Reads a word from the given virtual address
@@ -157,7 +164,7 @@ void VMinitialize(){
 int VMread(uint64_t virtualAddress, word_t* value){
     uint64_t physicalAddress = mapVirtualToPhysical(virtualAddress);
     if (physicalAddress != 0){
-        VMread(physicalAddress, value);
+        PMread(physicalAddress, value);
         return 1;
     }
     return 0;
@@ -172,7 +179,7 @@ int VMread(uint64_t virtualAddress, word_t* value){
 int VMwrite(uint64_t virtualAddress, word_t value){
     uint64_t physicalAddress = mapVirtualToPhysical(virtualAddress);
     if (physicalAddress != 0){
-        VMwrite(physicalAddress, value);
+        PMwrite(physicalAddress, value);
         return 1;
     }
     return 0;
