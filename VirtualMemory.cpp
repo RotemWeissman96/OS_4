@@ -14,13 +14,13 @@ int calculateNumShifts(int depth){
 uint64_t calculatePageNumber(uint64_t virtualAddress){
     return virtualAddress << OFFSET_WIDTH;
 }
-boolean isFrameEmpty(uint64_t &currentFrame){
+
+bool isFrameEmpty(uint64_t &currentFrame){
     word_t val = 0;
 
     for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++) {
-
         PMread(address, &val);
-        if (val!=0){
+        if (val != 0){
             return false;
         }
     }
@@ -44,11 +44,9 @@ void dfsFindFrameToEvict(uint64_t currentDepth, uint64_t &currentFrame, uint64_t
             for (uint64_t address = currentFrame*PAGE_SIZE; address < (currentFrame+1)*PAGE_SIZE; address++){
                 word_t val = 0;
                 PMread(address, &val);
-
-
                 if (val){
-                    if(*maxFrameNumberInUse<val){
-                        *maxFrameNumberInUse = val;
+                    if(maxFrameNumberInUse < val){
+                        maxFrameNumberInUse = val;
                     }
                     //TODO: add to parent list
 
@@ -83,12 +81,12 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
             // init all arguments for dfs
             uint64_t lastFrameChecked = 0;
             uint64_t lastFrameCheckedParent = -1;
-            uint64_t maxFrameNumberInUse;
-            uint64_t maxCycleValue;
-            uint64_t maxCyclePageNumber;
-            uint64_t maxCycleParent;
-            uint64_t emptyFrame;
-            uint64_t emptyFrameParent;
+            uint64_t maxFrameNumberInUse = 0;
+            uint64_t maxCycleValue = -1;
+            uint64_t maxCyclePageNumber = -1;
+            uint64_t maxCycleParent = -1;
+            uint64_t emptyFrame = -1;
+            uint64_t emptyFrameParent = -1;
             //call dfs to gather information on the tree
             dfsFindFrameToEvict(0, lastFrameChecked, lastFrameCheckedParent
                     ,maxFrameNumberInUse, parentsList,
