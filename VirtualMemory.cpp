@@ -7,27 +7,28 @@ void clearPage(uint64_t page_number){
 }
 
 //call with 0 to calculate root shifts needed
-int calculate_num_shifts(int depth){
+int calculateNumShifts(int depth){
     return (TABLES_DEPTH - depth) * OFFSET_WIDTH; //table depth - offset - current depth
 }
 
-uint64_t calculate_page_number(uint64_t virtual_address){
-    return virtual_address << OFFSET_WIDTH;
+uint64_t calculatePageNumber(uint64_t virtualAddress){
+    return virtualAddress << OFFSET_WIDTH;
 }
 
-uint64_t map_virtual_to_physical(uint64_t virtualAddress) {
-    uint64_t offset = virtualAddress << calculate_num_shifts(0);
-    uint64_t current_table_offset = virtualAddress >> calculate_num_shifts(0);
-    word_t current_table_page_number = 0;
+uint64_t mapVirtualVoPhysical(uint64_t virtualAddress) {
+    uint64_t offset = virtualAddress << calculateNumShifts(0);
+    uint64_t currentTableOffset = virtualAddress >> calculateNumShifts(0);
+    word_t currentTablePageNumber = 0;
+    uint64_t inputPageNumber = calculatePageNumber(virtualAddress);
     for (int i = 1; i < TABLES_DEPTH - 1; i++){
-        PMread(current_table_page_number*PAGE_SIZE + current_table_offset, &current_table_page_number);
-        current_table_offset = (virtualAddress << calculate_num_shifts(i)) % PAGE_SIZE;
+        PMread(currentTablePageNumber * PAGE_SIZE + currentTableOffset, &currentTablePageNumber);
+        currentTableOffset = (virtualAddress << calculateNumShifts(i)) % PAGE_SIZE;
 
-        if(current_table_page_number == 0){
+        if(currentTablePageNumber == 0){
             //TODO: handle page fault
         }
     }
-    return current_table_page_number*PAGE_SIZE + offset;
+    return currentTablePageNumber * PAGE_SIZE + offset;
 }
 
 
@@ -48,9 +49,9 @@ void VMinitialize(){
  * address for any reason)
  */
 int VMread(uint64_t virtualAddress, word_t* value){
-    uint64_t physical_add = map_virtual_to_physical(virtualAddress);
-    if (physical_add != 0){
-        VMread(physical_add, value);
+    uint64_t physicalAddress = mapVirtualVoPhysical(virtualAddress);
+    if (physicalAddress != 0){
+        VMread(physicalAddress, value);
         return 1;
     }
     return 0;
@@ -63,9 +64,9 @@ int VMread(uint64_t virtualAddress, word_t* value){
  * address for any reason)
  */
 int VMwrite(uint64_t virtualAddress, word_t value){
-    uint64_t physical_add = map_virtual_to_phisical(virtualAddress);
-    if (physical_add != 0){
-        VMwrite(physical_add, value);
+    uint64_t physicalAddress = mapVirtualVoPhysical(virtualAddress);
+    if (physicalAddress != 0){
+        VMwrite(physicalAddress, value);
         return 1;
     }
     return 0;
