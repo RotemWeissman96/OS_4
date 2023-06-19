@@ -44,6 +44,7 @@ void PMevict(uint64_t frameIndex, uint64_t evictedPageIndex) {
 
     assert(frameIndex < NUM_FRAMES);
     assert(evictedPageIndex < NUM_PAGES);
+    printf("evicted: %d\n", frameIndex);
     assert(swapFile.find(evictedPageIndex) == swapFile.end());
 
     swapFile[evictedPageIndex] = RAM[frameIndex];

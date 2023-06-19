@@ -25,8 +25,10 @@ void updateMaxCycle(uint64_t &maxCycleValue, word_t &maxCycleFrameNumber, uint64
                     word_t &currentFrame, uint64_t &maxCyclePageNumber){
     // calculate new cycle value:
     uint64_t firstPart =  swappedInPageNumber - pageCount;
-    if (firstPart < 0){
-        firstPart = -firstPart;
+    if (swappedInPageNumber < pageCount){
+        firstPart = pageCount - swappedInPageNumber;
+    } else {
+        firstPart = swappedInPageNumber - pageCount;
     }
     uint64_t currentCyclicValue = firstPart;
     if (currentCyclicValue > NUM_PAGES - firstPart){
@@ -49,15 +51,15 @@ void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t 
         maxFrameNumberInUse = currentFrameNumber;
     }
     if (currentDepth == TABLES_DEPTH){ // we reached a leaf
-        pageCount ++;
         updateMaxCycle(maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber, pageCount,
                        currentParent, currentFrameNumber, maxCyclePageNumber);
+        pageCount ++;
     }
     else{
-        if (currentFrameNumber != forbiddenFrame && isFrameEmpty(currentFrameNumber)){
+        if (currentFrameNumber != forbiddenFrame && isFrameEmpty(currentFrameNumber) && currentDepth != TABLES_DEPTH){
             emptyFrame = currentFrameNumber;
             emptyFrameParent = currentParent;
-            pageCount = pageCount + (1 << (TABLES_DEPTH - currentDepth));
+            pageCount = pageCount + (1 << (OFFSET_WIDTH*(TABLES_DEPTH - currentDepth - 1)));
         }
         else{
             for (uint64_t address = currentFrameNumber*PAGE_SIZE; address < static_cast<uint64_t>(currentFrameNumber+1)*PAGE_SIZE; address++){
@@ -68,6 +70,8 @@ void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t 
                                         maxFrameNumberInUse, pageCount, maxCyclePageNumber,
                                         maxCycleValue, maxCycleFrameNumber, maxCycleParent, swappedInPageNumber,
                                         emptyFrame, emptyFrameParent, forbiddenFrame);
+                } else{
+                    pageCount = pageCount + (1 << (OFFSET_WIDTH*(TABLES_DEPTH - currentDepth - 1)));
                 }
             }
         }
@@ -95,19 +99,19 @@ uint64_t handlePageFault(int depth, uint64_t swappedInPageNumber, uint64_t fault
     if (emptyFrame != 0){ // case 1
         newFrame = emptyFrame;
         PMwrite(emptyFrameParent,PAGE_FAULT);
-        clearFrame(newFrame);
     }
     else if(maxFrameNumberInUse+1<NUM_FRAMES){ // case 2
         newFrame = maxFrameNumberInUse + 1;
-        clearFrame(newFrame);
     }
     else { // case 3
         newFrame = maxCycleFrameNumber;
-        PMevict(newFrame, maxCyclePageNumber);  // TODO: calling here twice, check for parent-still calling the same san
+        PMevict(newFrame, maxCyclePageNumber);
         PMwrite(maxCycleParent, PAGE_FAULT);
     }
-    if (depth == TABLES_DEPTH - 1){
+    if (depth == TABLES_DEPTH - 1){ // if we insert a leaf
         PMrestore(newFrame, swappedInPageNumber);
+    } else { // if we insert a table
+        clearFrame(newFrame);
     }
     PMwrite(faultAddress,newFrame);
     return newFrame;
