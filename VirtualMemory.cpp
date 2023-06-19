@@ -1,12 +1,22 @@
 #include "PhysicalMemory.h"
 
 #define PAGE_FAULT 0
+
+/**
+ * fill entire frame with zeros
+ * @param frameNumber
+ */
 void clearFrame(word_t frameNumber){
     for (int i = 0; i < PAGE_SIZE; i++){
         PMwrite(frameNumber * PAGE_SIZE + i, 0);
     }
 }
 
+/**
+ * check if this frame is all filled with 0
+ * @param currentFrame
+ * @return true/false base on the answer
+ */
 bool isFrameEmpty(word_t &currentFrame){
     word_t val = 0;
 
@@ -17,9 +27,19 @@ bool isFrameEmpty(word_t &currentFrame){
         }
     }
     return true;
-
 }
 
+/**
+ * check if the current max cycle page in the RAM is higher then the current page cycle distance
+ * @param maxCyclePageNumber what is the page number with the highest cycle distance
+ * @param maxCycleValue what is the highest cycle distance so far
+ * @param maxCycleFrameNumber where is that page stored in the RAM
+ * @param maxCycleParent what address pointed to this frame
+ * @param swappedInPageNumber page number of the current page looking to add to RAM
+ * @param pageCount the number of the current page in the dfs search
+ * @param currentParent what address pointed to the current frame
+ * @param currentFrame
+ */
 void updateMaxCycle(uint64_t &maxCycleValue, word_t &maxCycleFrameNumber, uint64_t &maxCycleParent,
                     uint64_t swappedInPageNumber, uint64_t &pageCount, uint64_t &currentParent,
                     word_t &currentFrame, uint64_t &maxCyclePageNumber){
@@ -43,6 +63,23 @@ void updateMaxCycle(uint64_t &maxCycleValue, word_t &maxCycleFrameNumber, uint64
     }
 }
 
+/**
+ * running a dfs over the virtual tree of tables in order to gathe information.
+ * based on that information we decide where to add the current page to add
+ * @param currentDepth what depth in the virtual tree are we in the dfs
+ * @param maxFrameNumberInUse keeps the max frame number, the goal is to know if RAM is full
+ * @param emptyFrame if we find an empty frame to fill, if not this will be 0
+ * @param emptyFrameParent the address pointing to the empty frame found
+ * @param forbiddenFrame a frame who we are not allowed to return - its the parent of the current page to add
+ * @param maxCyclePageNumber what is the page number with the highest cycle distance
+ * @param maxCycleValue what is the highest cycle distance so far
+ * @param maxCycleFrameNumber where is that page stored in the RAM
+ * @param maxCycleParent what address pointed to this frame
+ * @param swappedInPageNumber page number of the current page looking to add to RAM
+ * @param pageCount the number of the current page in the dfs search
+ * @param currentParent what address pointed to the current frame
+ * @param currentFrame
+ */
 void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t &currentParent,
                          word_t &maxFrameNumberInUse, uint64_t &pageCount, uint64_t &maxCyclePageNumber,
                          uint64_t &maxCycleValue, word_t &maxCycleFrameNumber, uint64_t &maxCycleParent, uint64_t swappedInPageNumber,
@@ -78,6 +115,14 @@ void dfsFindFrameToEvict(int currentDepth, word_t &currentFrameNumber, uint64_t 
     }
 }
 
+/**
+ * handles a page fault
+ * @param depth the depth of the page to add
+ * @param swappedInPageNumber page number of the current page looking to add to RAM
+ * @param faultAddress the address in ram that was supposed to point to the current page to add but had 0
+ * @param forbiddenFrame a frame who we are not allowed to return - its the parent of the current page to add
+ * @return
+ */
 uint64_t handlePageFault(int depth, uint64_t swappedInPageNumber, uint64_t faultAddress, word_t forbiddenFrame){
     // init all arguments for dfs
     word_t lastFrameChecked = 0;
@@ -131,6 +176,11 @@ void parseVirtualAddress(uint64_t virtualAddress, uint64_t *f){
     }
 }
 
+/**
+ * maps virtual addresses to Physical addresses, handles page faults
+ * @param virtualAddress
+ * @return a physical address
+ */
 uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
     uint64_t offset = virtualAddress % PAGE_SIZE;
     uint64_t swappedInPageNumber = virtualAddress >> OFFSET_WIDTH;
@@ -144,8 +194,8 @@ uint64_t mapVirtualToPhysical(uint64_t virtualAddress) {
         PMread(currAddress, &currentFrameNumber);
         if(currentFrameNumber == PAGE_FAULT){ // there is a page fault
             currentFrameNumber = handlePageFault(i, swappedInPageNumber, currAddress, forbiddenFrame);
-            forbiddenFrame = currentFrameNumber;
         }
+        forbiddenFrame = currentFrameNumber;
     }
 
     return currentFrameNumber * PAGE_SIZE + offset;
@@ -170,7 +220,7 @@ void VMinitialize(){
  */
 int VMread(uint64_t virtualAddress, word_t* value){
     uint64_t physicalAddress = mapVirtualToPhysical(virtualAddress);
-    if (physicalAddress != 0){
+    if (physicalAddress != 0 && virtualAddress < VIRTUAL_MEMORY_SIZE){
         PMread(physicalAddress, value);
         return 1;
     }
@@ -185,7 +235,7 @@ int VMread(uint64_t virtualAddress, word_t* value){
  */
 int VMwrite(uint64_t virtualAddress, word_t value){
     uint64_t physicalAddress = mapVirtualToPhysical(virtualAddress);
-    if (physicalAddress != 0){
+    if (physicalAddress != 0 && virtualAddress < VIRTUAL_MEMORY_SIZE){
         PMwrite(physicalAddress, value);
         return 1;
     }
